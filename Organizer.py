@@ -4,6 +4,7 @@ from pytz import timezone
 from pytz import all_timezones
 import time
 import math
+import sqlite3
 
 class Frame(wx.Frame):
     def __init__(self, parent, title, windowWidth, windowHeight):
@@ -18,18 +19,16 @@ class Frame(wx.Frame):
         #self.display_width = int(3*(self.clockWidth+self.clockMargin))+self.clockMargin
         #self.display_height = 768
 
-        self.bgColorMouseOver = (15, 15, 15)
-        self.fgColorMouseOver = (255, 255, 255)
-        self.bgColorMouseAway = (15, 15, 15)
-        self.fgColorMouseAway = (255, 255, 255)
+        self.bgColorActive = (15, 15, 15)
+        self.fgColorActive = (255, 255, 255)
+        self.bgColorNotActive = (15, 15, 15)
+        self.fgColorNotActive = (255, 255, 255)
         
-        self.SetBackgroundColour(self.bgColorMouseOver)
+        self.SetBackgroundColour(self.bgColorActive)
         self.mostOpaqueLevel = 254 #254
         self.leastOpaqueLevel = 164 #212
-        self.alphaTransparency = self.leastOpaqueLevel
         self.clockRefreshSpeed = 1000
-        self.transparencyChangeAmount = 1
-        self.SetBackgroundColour(self.bgColorMouseOver)
+        self.SetBackgroundColour(self.bgColorActive)
         self.displayTitleBar = False
         self.tzArray = ['America/Los_Angeles', 'America/New_York', 'Europe/London']
         self.tzDescArray = ["Seattle", "New York", "London"]
@@ -39,7 +38,7 @@ class Frame(wx.Frame):
 
         self.appClocks =[]
         for i in xrange(self.numberOfClocks):
-            self.appClocks.append(clock(self.tzArray[i], self.tzDescArray[i]))
+            self.appClocks.append(Clock(self.tzArray[i], self.tzDescArray[i]))
         del self.tzArray
         del self.tzDescArray
 
@@ -57,14 +56,14 @@ class Frame(wx.Frame):
         self.justLoading = False
         self.Centre()
         self.Show()
-        self.myCal = calendar()
+        self.myCal = Calendar()
         self.myCal.determineDays(self)
         self.drawCalendar(self.myCal)
         self.updateAndDrawClocks()
         self.drawClockTimeZone(self.appClocks)
-        
+
         self.myArray = []
-        self.myArray.append(frameText(self, "Title", 500, 10, (255,255,255), "C", "T", None))
+        self.myArray.append(FrameText(self, "Title", 500, 10, (255,255,255), "C", "T", None))
         self.myArray[0].Bind(wx.EVT_LEFT_DOWN, self.titleClick)
 
         #for zone in all_timezones:
@@ -73,20 +72,12 @@ class Frame(wx.Frame):
     def titleClick(self, e=None):
         pass
 
-    def selectFirstClockTimeZone(self, e=None):
-        self.appClocks[0].updateTimeZone(self.selectFromAllTimeZones(1))
+    def selectClockTimeZone(self, e=None):
+        print str(e.GetEventObject())
+        print str(e.GetEventObject().attribute)
+        self.appClocks[e.GetEventObject().attribute].updateTimeZone(self.selectFromAllTimeZones(e.GetEventObject().attribute))
         self.drawClockTimeZone(self.appClocks)
 
-    def selectSecondClockTimeZone(self, e=None):
-        print e.GetEventObject().Name
-        self.appClocks[1].updateTimeZone(self.selectFromAllTimeZones(2))
-        self.drawClockTimeZone(self.appClocks)
-
-    def selectThirdClockTimeZone(self, e=None):
-        print e.GetEventObject().Name
-        self.appClocks[2].updateTimeZone(self.selectFromAllTimeZones(3))
-        self.drawClockTimeZone(self.appClocks)
-        
     def selectFromAllTimeZones(self, clockSelection):
         selTimeZone = None
         if self.justLoading == False:
@@ -100,71 +91,50 @@ class Frame(wx.Frame):
 
     def drawClockTimeZone(self, displayClocks):
         try:
-            self.timeZoneCityLabel1.Destroy()
-            self.timeZoneCityLabel2.Destroy()
-            self.timeZoneCityLabel3.Destroy()
+            del self.timeZoneDisplayArray
+            self.timeZoneDisplayArray.Destroy()
         except:
             pass
-        self.timeZoneCityLabel1 = frameText(self, displayClocks[0].tzDesc, 0*3*(displayClocks[0].clockWidth+displayClocks[0].clockMargin)/float(3) + displayClocks[0].clockX, displayClocks[0].clockY, self.fgColorMouseOver, "C", "C",  displayFont=wx.Font(16, wx.DECORATIVE, wx.NORMAL, wx.NORMAL))
-        self.timeZoneCityLabel2 = frameText(self, displayClocks[1].tzDesc, 1*3*(displayClocks[1].clockWidth+displayClocks[1].clockMargin)/float(3) + displayClocks[1].clockX, displayClocks[1].clockY, self.fgColorMouseOver, "C", "C",  displayFont=wx.Font(16, wx.DECORATIVE, wx.NORMAL, wx.NORMAL))
-        self.timeZoneCityLabel3 = frameText(self, displayClocks[2].tzDesc, 2*3*(displayClocks[2].clockWidth+displayClocks[2].clockMargin)/float(3) + displayClocks[2].clockX, displayClocks[2].clockY, self.fgColorMouseOver, "C", "C", displayFont=wx.Font(16, wx.DECORATIVE, wx.NORMAL, wx.NORMAL))
-        self.timeZoneCityLabel1.Bind(wx.EVT_LEFT_DCLICK, self.selectFirstClockTimeZone)
-        self.timeZoneCityLabel2.Bind(wx.EVT_LEFT_DCLICK, self.selectSecondClockTimeZone)
-        self.timeZoneCityLabel3.Bind(wx.EVT_LEFT_DCLICK, self.selectThirdClockTimeZone)
+        self.timeZoneDisplayArray = []
+        for i in xrange(len(displayClocks)):
+            self.timeZoneDisplayArray.append(FrameText(self, displayClocks[i].tzDesc, i*3*(displayClocks[i].clockWidth+displayClocks[i].clockMargin)/float(len(displayClocks)) + displayClocks[i].clockX, displayClocks[i].clockY, self.fgColorActive, "C", "C",  displayFont=wx.Font(16, wx.DECORATIVE, wx.NORMAL, wx.NORMAL), attribute=i))
+            self.timeZoneDisplayArray[i].Bind(wx.EVT_LEFT_DCLICK, self.selectClockTimeZone)
 
     def drawClockTime(self, displayClocks):
-        self.timeLabel1 = frameText(self, str(displayClocks[0].hours) + ":" + str(displayClocks[0].minutes) + ":" + str(displayClocks[0].seconds), 0*3*(displayClocks[0].clockWidth+displayClocks[0].clockMargin)/float(3) + displayClocks[0].clockX, displayClocks[0].clockY + displayClocks[0].clockHeight + displayClocks[0].clockMargin, self.fgColorMouseOver, "C", "T",  displayFont=wx.Font(16, wx.DECORATIVE, wx.NORMAL, wx.NORMAL))
-        self.timeLabel2 = frameText(self, str(displayClocks[1].hours) + ":" + str(displayClocks[1].minutes) + ":" + str(displayClocks[1].seconds), 1*3*(displayClocks[1].clockWidth+displayClocks[1].clockMargin)/float(3) + displayClocks[1].clockX, displayClocks[1].clockY + displayClocks[1].clockHeight + displayClocks[1].clockMargin, self.fgColorMouseOver, "C", "T",  displayFont=wx.Font(16, wx.DECORATIVE, wx.NORMAL, wx.NORMAL))
-        self.timeLabel3 = frameText(self, str(displayClocks[2].hours) + ":" + str(displayClocks[2].minutes) + ":" + str(displayClocks[2].seconds), 2*3*(displayClocks[2].clockWidth+displayClocks[2].clockMargin)/float(3) + displayClocks[2].clockX, displayClocks[2].clockY + displayClocks[2].clockHeight + displayClocks[2].clockMargin, self.fgColorMouseOver, "C", "T", displayFont=wx.Font(16, wx.DECORATIVE, wx.NORMAL, wx.NORMAL))
-        self.timeLabel1.Bind(wx.EVT_LEFT_DCLICK, self.selectFirstClockTimeZone)
-        self.timeLabel2.Bind(wx.EVT_LEFT_DCLICK, self.selectSecondClockTimeZone)
-        self.timeLabel3.Bind(wx.EVT_LEFT_DCLICK, self.selectThirdClockTimeZone)
-        
+        try:
+            self.timeDisplayArray.Destroy()
+        except:
+            pass
+        self.timeDisplayArray = []
+        for i in xrange(len(displayClocks)):
+            self.timeDisplayArray.append(FrameText(self, str(displayClocks[i].hours) + ":" + str(displayClocks[i].minutes) + ":" + str(displayClocks[i].seconds), i*3*(displayClocks[i].clockWidth+displayClocks[i].clockMargin)/float(3) + displayClocks[i].clockX, displayClocks[i].clockY + displayClocks[i].clockHeight + 2*displayClocks[i].clockMargin, self.fgColorActive, "C", "T",  displayFont=wx.Font(16, wx.DECORATIVE, wx.NORMAL, wx.NORMAL), attribute=i))
+            self.timeDisplayArray[i].Bind(wx.EVT_LEFT_DCLICK, self.selectClockTimeZone)        
         
     def drawCalendar(self, dispCal):
         try:
-            del self.calendarDayDisplayArray
+            self.calendarDayDisplayArray.Destroy()
         except:
             pass
         self.calendarDayDisplayArray = [[]]
         for i in xrange(len(dispCal.calDayGrid)):
             for j in xrange(7):
-                if dispCal.calDayGrid[i][j][1] != 0:
-                    if dispCal.calDayGrid[i][j][1] == "Before This Month" or dispCal.calDayGrid[i][j][1] == "After This Month":
-                        rgb = dispCal.otherMonthCalDayColor
-                    elif dispCal.calDayGrid[i][j][1] == "This Month After Today" or dispCal.calDayGrid[i][j][1] == "This Month Before Today":
-                        rgb = dispCal.thisMonthCalDayColor
-                    elif dispCal.calDayGrid[i][j][1] == "Today":
-                        rgb = dispCal.calTodayColor
-                    self.displayDay = frameText(self, dispCal.calDayGrid[i][j][0], 700 + 35*j, 40 + 35*i, rgb, "L", "T", None, dispCal.calDayGrid[i][j][1])
+                if dispCal.calDayGrid[i][j][1] != 0: #If we are even drawing this day at all
+                    if dispCal.calDayGrid[i][j][1].month != datetime.datetime.today().month: #If this day we're drawing is for a month that is not today's month,
+                        rgb = dispCal.otherMonthCalDayColor #then draw it as other month color
+                    else: #Otherwise,
+                        if dispCal.calDayGrid[i][j][1].day == datetime.datetime.today().day: #if the day we're drawing is today,
+                            rgb = dispCal.calTodayColor #then draw it as today color
+                        else: #Otherwise,
+                            rgb = dispCal.thisMonthCalDayColor #draw it as this month, not today color
+                    self.displayDay = FrameText(self, dispCal.calDayGrid[i][j][0], 700 + 35*j, 40 + 35*i, rgb, "L", "T", None, dispCal.calDayGrid[i][j][1])
                     self.calendarDayDisplayArray[i].append(self.displayDay)
                     self.calendarDayDisplayArray[i][-1].Bind(wx.EVT_LEFT_DOWN, self.calendarDaySelect)
             self.calendarDayDisplayArray.append([])
 
-        #self.workingDate = wx.StaticText(frame, -1, str(nthDayOfMonth), pos=(700 + 35*((workingDate.weekday() + 1)%7), 40 + 35*jthRow))
-        #self.workingDate.SetFont(wx.Font(16, wx.DECORATIVE, wx.NORMAL, wx.NORMAL))
-        #if (datetime.datetime(datetime.datetime.today().year + yearAdj, datetime.datetime.today().month + workingMonth + prevMonthDec, nthDayOfMonth, 0, 0, 0, 0) == datetime.datetime(datetime.datetime.today().year, datetime.datetime.today().month, datetime.datetime.today().day, 0, 0, 0, 0)):
-        #    self.workingDate.SetForegroundColour(self.calTodayColor)
-        #else:
-        #    if workingMonth == 0:
-        #        self.workingDate.SetForegroundColour(self.thisMonthCalDayColor)
-        #    else:
-        #        self.workingDate.SetForegroundColour(self.otherMonthCalDayColor)
-        ##self.workingDate.Bind(wx.EVT_LEFT_DOWN, self.calendarDaySelect)
-        #if nthDayOfMonth == 1 and workingMonth == -int(self.numberOfMonths/float(2)):
-        #    for i in xrange(workingDate.weekday()):
-        #        self.calDayGrid[0].append(0)
-        #self.calDayGrid[jthRow].append(nthDayOfMonth)
-        #nthDayOfMonth = nthDayOfMonth + 1
-        #if workingDate.weekday() == 5 :
-        #    jthRow = jthRow + 1
-        #    self.calDayGrid.append([])
-
-
     def calendarDaySelect(self, e=None):
         print str(e.GetEventObject())
         print str(e.GetEventObject().attribute)
-
+        
     def clearDrawings(self):
         dc = wx.ClientDC(self)
         dc.Clear()
@@ -178,14 +148,14 @@ class Frame(wx.Frame):
         #WE WANT TO MAKE BACKGROUND TRANSPARENT ON MOUSE AWAY FROM WINDOW, BUT
         #NOT IF THE MOUSE AWAY IS ACTUALLY MOUSE OVER THE WINDOW'S OWN TEXT
         #if self.mouseOver == False:
-        self.SetBackgroundColour(self.bgColorMouseAway)
+        self.SetBackgroundColour(self.bgColorNotActive)
         self.SetTransparent(self.leastOpaqueLevel)
         self.mouseOver = False
         #self.drawClocks(self.appClocks)
         self.updateAndDrawClocks()
             
     def mouseReturn(self, e):
-        #self.SetBackgroundColour(self.bgColorMouseOver)
+        #self.SetBackgroundColour(self.bgColorActive)
         self.SetTransparent(self.mostOpaqueLevel)
         self.mouseOver = True
         #self.drawClocks(self.appClocks)
@@ -221,6 +191,7 @@ class Frame(wx.Frame):
     def updateAndDrawClocks(self, e = None):
         for i in self.appClocks:
             i.updateTime()
+        #self.drawClockTime(self.appClocks)
         self.drawClocks(self.appClocks)
 
     def drawClocks(self, displayClocks):
@@ -262,7 +233,7 @@ class Frame(wx.Frame):
                           int(displayClocks[i].clockHeight + displayClocks[i].clockMargin + int(round(displayClocks[i].secondLength * math.sin((math.pi/180)*((displayClocks[i].seconds-15)/float(60))*360)))),
                           displayClocks[i].secondThick, displayClocks[i].secondColor)
 
-class clock(object):
+class Clock(object):
     def __init__(self, tz, tzDesc):
         self.secondColor = (255, 0, 0)
         self.minuteColor = (255, 255, 255)
@@ -298,7 +269,7 @@ class clock(object):
             self.tzDesc = self.tz[self.tz.find("/")+1:].replace("_", " ")
             self.updateTime()
 
-class calendar(object):
+class Calendar(object):
     def __init__(self):
         self.thisMonthCalDayColor = (255,255,255)
         self.otherMonthCalDayColor = (96,96,96)
@@ -320,22 +291,22 @@ class calendar(object):
                 yearAdj = 0
             try:
                 workingDate = datetime.datetime(datetime.datetime.today().year + yearAdj, datetime.datetime.today().month + workingMonth + prevMonthDec, nthDayOfMonth, 0, 0, 0, 0)
-                if (datetime.datetime(datetime.datetime.today().year + yearAdj, datetime.datetime.today().month + workingMonth + prevMonthDec, nthDayOfMonth, 0, 0, 0, 0) == datetime.datetime(datetime.datetime.today().year, datetime.datetime.today().month, datetime.datetime.today().day, 0, 0, 0, 0)):
-                    dayAttribute = "Today"
-                else:
-                    if workingMonth == 0:
-                        if nthDayOfMonth > int(datetime.datetime.today().day):
-                            dayAttribute = "This Month After Today"
-                        elif nthDayOfMonth < int(datetime.datetime.today().day):
-                            dayAttribute = "This Month Before Today"
-                    elif workingMonth < 0:
-                        dayAttribute = "Before This Month"
-                    elif workingMonth > 0:
-                        dayAttribute = "After This Month"
+##                if (datetime.datetime(datetime.datetime.today().year + yearAdj, datetime.datetime.today().month + workingMonth + prevMonthDec, nthDayOfMonth, 0, 0, 0, 0) == datetime.datetime(datetime.datetime.today().year, datetime.datetime.today().month, datetime.datetime.today().day, 0, 0, 0, 0)):
+##                    dayAttribute = "Today"
+##                else:
+##                    if workingMonth == 0:
+##                        if nthDayOfMonth > int(datetime.datetime.today().day):
+##                            dayAttribute = "This Month After Today"
+##                        elif nthDayOfMonth < int(datetime.datetime.today().day):
+##                            dayAttribute = "This Month Before Today"
+##                    elif workingMonth < 0:
+##                        dayAttribute = "Before This Month"
+##                    elif workingMonth > 0:
+##                        dayAttribute = "After This Month"
                 if nthDayOfMonth == 1 and workingMonth == -int(self.numberOfMonths/float(2)):
                     for i in xrange(workingDate.weekday() + 1):
                         self.calDayGrid[0].append([0,0])
-                self.calDayGrid[jthRow].append([str(nthDayOfMonth), dayAttribute])
+                self.calDayGrid[jthRow].append([str(nthDayOfMonth), workingDate])
                 nthDayOfMonth = nthDayOfMonth + 1
                 if workingDate.weekday() == 5 :
                     jthRow = jthRow + 1
@@ -347,9 +318,9 @@ class calendar(object):
             for i in xrange(5 - workingDate.weekday()):
                 self.calDayGrid[jthRow].append([0,0])
 
-class frameText(wx.StaticText):
+class FrameText(wx.StaticText):
     def __init__(self, displayFrame, displayText, x, y, displayColor, alignX, alignY, displayFont, attribute=None):
-        super(frameText, self).__init__(displayFrame, -1, displayText)
+        super(FrameText, self).__init__(displayFrame, -1, displayText)
         self.attribute = attribute
         self.displayText = displayText
         dc = wx.ClientDC(displayFrame)
@@ -369,8 +340,21 @@ class frameText(wx.StaticText):
         elif alignY == "B":
             y = y-h
         self.SetPosition((int(x), int(y)))
-        
 
+class Dbo(object):
+    pass
+
+class ToDoList(Dbo):
+    pass
+
+class CalendarTasks(Dbo):
+    pass
+
+class DependencyChart(Dbo):
+    pass
+
+class GanttChart(Dbo):
+    pass
         
 if __name__ == '__main__':
     app = wx.App()
